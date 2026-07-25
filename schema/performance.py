@@ -3,6 +3,7 @@
 # Source of truth: file_layout.xlsx (Pre-July 2026 layout), sheet "Monthly Performance Data File"
 # 32 columns, in exact file order. Bronze layer loads ALL as strings;
 # typing happens later in dbt staging. Column ORDER is what matters for parsing.
+# Why this file exists and how the layout was confirmed: view README.md, "Data schema".
 
 PERFORMANCE_COLUMNS = [
     "loan_sequence_number",                # 1  AlphaNumeric  <-- JOIN KEY to origination table
