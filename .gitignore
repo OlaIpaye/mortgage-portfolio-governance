@@ -1,0 +1,11 @@
+# Not committing the licensed datasets
+datasets/
+*.txt
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
+
+# Fabric/notebook local exports
+.ipynb_checkpoints/
