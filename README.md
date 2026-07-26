@@ -25,4 +25,30 @@ layout, one file per dataset:
 
 Each file lists the columns in exact file order (order is what I relied on, since the raw files have no headers). **Columns are loaded as text at the bronze stage** to preserve the source faithfully; typing happens later in dbt.
 
-##
+## Bronze layer - loan-level ingestion
+
+The ["notebooks/01_bronze_origination.ipynb"](notebooks/01_bronze_origination.ipynb)
+notebook lands the raw Freddie Mac origination file into the Lakehouse as a Delta
+table ("bronze_origination").
+
+The bronze layer follows two principles:
+- **Faithful landing** - every column is read as text, so source values (including
+  sentinels like "9999") are preserved exactly and typed later in dbt.
+- **Auditable loads** - each row carries lineage (load batch, ingestion timestamp,
+  source file), and every load is reconciled (raw line count vs loaded rows) with
+  the result written to a "load_audit" table.
+
+### Pipeline evidence
+
+**Raw ingestion into the Lakehouse**
+![Raw data ingestion into the Lakehouse](docs/images/1-raw-ingestion.png)
+
+**Column names applied from the confirmed layout**
+![Applied column names to the raw file](docs/images/1.1-applied-column-names.png)
+
+**Load audit table**
+![Load audit table recording each load](docs/images/1.2-load-audit-table.png)
+
+**Reconciliation check - raw line count vs loaded rows**
+![Table load reconciliation checks](docs/images/1.3-reconciliation-checks.png)
+
