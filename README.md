@@ -27,16 +27,24 @@ Each file lists the columns in exact file order (order is what I relied on, sinc
 
 ## Bronze layer - loan-level ingestion
 
-The ["notebooks/01_bronze_origination.ipynb"](notebooks/01_bronze_origination.ipynb)
-notebook lands the raw Freddie Mac origination file into the Lakehouse as a Delta
-table ("bronze_origination").
+Two notebooks land the raw Freddie Mac files into the Lakehouse as Delta tables:
+
+- ["notebooks/01_bronze_origination.ipynb"](notebooks/01_bronze_origination.ipynb)
+  lands the origination file as "bronze_origination" (one row per loan, ~50k rows).
+- ["notebooks/02_bronze_performance.ipynb"](notebooks/02_bronze_performance.ipynb)
+  lands the monthly performance file as "bronze_performance" (one row per loan per
+  month, ~2M rows).
+
+The row-count difference reflects the grain of each file: origination is one row
+per loan, while performance is one row per loan per reporting month.
 
 The bronze layer follows two principles:
 - **Faithful landing** - every column is read as text, so source values (including
   sentinels like "9999") are preserved exactly and typed later in dbt.
 - **Auditable loads** - each row carries lineage (load batch, ingestion timestamp,
   source file), and every load is reconciled (raw line count vs loaded rows) with
-  the result written to a "load_audit" table.
+  the result appended to a "load_audit" table. Both loads reconciled successfully,
+  and the audit table accumulates one row per load as a running ledger.
 
 ### Pipeline evidence
 
@@ -46,9 +54,9 @@ The bronze layer follows two principles:
 **Column names applied from the confirmed layout**
 ![Applied column names to the raw file](docs/images/1.1-applied-column-names.png)
 
-**Load audit table**
+**Load audit table - both loads reconciled**
+![Load audit check for both delta tables](docs/images/1.4-load-audit-for-both-delta-tables.png)
 ![Load audit table recording each load](docs/images/1.2-load-audit-table.png)
 
 **Reconciliation check - raw line count vs loaded rows**
 ![Table load reconciliation checks](docs/images/1.3-reconciliation-checks.png)
-
