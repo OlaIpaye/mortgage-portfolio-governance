@@ -5,6 +5,9 @@ loan-level data flows through a Lakehouse, into a dbt-built star schema, and out
 to a Direct Lake Power BI governance pack. Built as the quarterly governance pack
 a Product Analyst at a UK lender would produce.
 
+**Project Architecture**
+![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/project-architecture-preview.png)
+
 ## Data schema
 
 The Freddie Mac Single-Family Loan-Level Dataset was downloaded as pipe-delimited
