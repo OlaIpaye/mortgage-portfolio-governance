@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "Raw loan data, loaded as text into the Fabric Lakehouse by the PySpark bronze notebooks."
+    database: lh_mortgage      # the Lakehouse — read cross-database from the Warehouse
+    schema: dbo
+    tables:
+      - name: bronze_origination
+        description: "One row per loan at origination (~50k rows)."
+      - name: bronze_performance
+        description: "One row per loan per reporting month (~2M rows)."
