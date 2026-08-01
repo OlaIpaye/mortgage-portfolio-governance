@@ -103,3 +103,7 @@ The bronze layer follows two principles:
 ![Table load reconciliation checks](docs/images/1.3-reconciliation-checks.png)
 
 ##
+
+
+### Reproducing the dbt setup
+The dbt connection profile isn't committed, as it points at a specific Fabric Warehouse endpoint. To run this yourself: copy `mortgage_dbt/profiles.example.yml` to `~/.dbt/profiles.yml`, set `server` to your own Warehouse SQL connection string, run `az login`, then `dbt debug` from the `mortgage_dbt/` folder.

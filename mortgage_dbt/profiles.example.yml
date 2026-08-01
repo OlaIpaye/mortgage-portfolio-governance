@@ -1,0 +1,27 @@
+# profiles.example.yml
+# ---------------------------------------------------------------
+# Template for this project's dbt connection profile.
+# The REAL profile lives outside the repo at ~/.dbt/profiles.yml
+# and is never committed — it points at a specific Fabric Warehouse
+# endpoint, which is environment-specific and shouldn't be published.
+#
+# To reproduce locally:
+#   1. Install dbt-fabric + ODBC Driver 18 (see README).
+#   2. Copy this file to ~/.dbt/profiles.yml
+#   3. Replace `server` with your own Warehouse SQL connection string.
+#   4. Run `az login` (CLI auth — no secrets stored here).
+#   5. From mortgage_dbt/, run `dbt debug` to verify.
+# ---------------------------------------------------------------
+
+mortgage_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: fabric
+      driver: 'ODBC Driver 18 for SQL Server'
+      server: <your-warehouse>.datawarehouse.fabric.microsoft.com  # replace with your endpoint
+      port: 1433
+      database: wh_mortgage
+      schema: dbo
+      authentication: CLI
+      threads: 4
