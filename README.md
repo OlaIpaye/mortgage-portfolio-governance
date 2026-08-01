@@ -8,6 +8,44 @@ a Product Analyst at a UK lender would produce.
 **Project Architecture**
 ![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/project-architecture-preview.png)
 
+```mermaid
+flowchart LR
+    subgraph SRC["Sources"]
+        FM["Freddie Mac SFLLD<br/>origination + performance"]
+        BOE["Bank of England<br/>MLAR + base rate"]
+    end
+    subgraph BRONZE["Bronze · Fabric Lakehouse"]
+        direction TB
+        SPARK["PySpark notebooks<br/>faithful load as text"]
+        BT["bronze_origination<br/>bronze_performance · Delta"]
+        AUD["lineage cols · load_audit<br/>reconciliation"]
+        SPARK --> BT --> AUD
+    end
+    subgraph XFORM["Silver + Gold · dbt on Fabric Warehouse"]
+        direction TB
+        STG["staging — deliberate typing<br/>9999→null · text→dates/numbers"]
+        TST["dbt tests<br/>data quality"]
+        STAR["star schema<br/>dim + fact marts"]
+        STG --> TST --> STAR
+    end
+    subgraph SERVE["Serving"]
+        direction TB
+        SEM["Direct Lake on OneLake<br/>semantic model"]
+        PBI["Power BI<br/>4-page governance pack"]
+        DOC["Fair Value memo<br/>Product Risk Review"]
+        SEM --> PBI --> DOC
+    end
+    SRC --> BRONZE --> XFORM --> SERVE
+    ADF["Data Factory · orchestration"] -.-> BRONZE
+    ADF -.-> XFORM
+    GH["GitHub · version control"] -.-> BRONZE
+    GH -.-> XFORM
+    style SRC fill:#b0bec5,stroke:#546e7a
+    style BRONZE fill:#d9a867,stroke:#8a5a24
+    style XFORM fill:#a9b7c6,stroke:#566573
+    style SERVE fill:#96c79a,stroke:#3e7a44
+```
+
 ## Data schema
 
 The Freddie Mac Single-Family Loan-Level Dataset was downloaded as pipe-delimited
@@ -63,3 +101,5 @@ The bronze layer follows two principles:
 
 **Reconciliation check - raw line count vs loaded rows**
 ![Table load reconciliation checks](docs/images/1.3-reconciliation-checks.png)
+
+##

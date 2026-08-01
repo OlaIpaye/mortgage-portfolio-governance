@@ -9,3 +9,8 @@ __pycache__/
 
 # Fabric/notebook local exports
 .ipynb_checkpoints/
+
+# dbt
+logs/
+target/
+dbt_packages/
