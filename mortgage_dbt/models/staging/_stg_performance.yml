@@ -10,8 +10,18 @@ models:
             - monthly_reporting_period
     columns:
       - name: loan_sequence_number
+        description: "The unique loan identifier, used to join to origination data."
         tests:
           - not_null
+          - relationships:
+              to: ref('stg_origination')
+              field: loan_sequence_number
+
       - name: monthly_reporting_period
+        tests:
+          - not_null
+
+      - name: current_loan_delinquency_status
+        description: "The status of the loan's delinquency, represented as a code."
         tests:
           - not_null
