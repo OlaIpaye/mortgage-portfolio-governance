@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_performance
+    description: "One row per loan per reporting month, typed from bronze. Grain: loan-month."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - loan_sequence_number
+            - monthly_reporting_period
+    columns:
+      - name: loan_sequence_number
+        tests:
+          - not_null
+      - name: monthly_reporting_period
+        tests:
+          - not_null
