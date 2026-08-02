@@ -104,34 +104,97 @@ The bronze layer follows two principles:
 
 ## Silver / staging layer (dbt on Fabric Warehouse)
 
-### Why this layer exists
-Bronze layer holds every column as text, a faithful copy of source. Typing is
-deferred to here so it's a deliberate, reviewable, *tested* decision rather than a silent cast at load time.
+Two staging models - one per bronze table, each one-to-one with its source, so the
+grain is unchanged (origination table stays one row per loan; performance table stays one row
+per loan-month). Their only job is to turn faithful-but-untyped bronze text into
+correctly-typed, meaningful columns, and to prove those decisions with tests. dbt
+runs in the Warehouse (`wh_mortgage`) and reads bronze live from the Lakehouse
+(`lh_mortgage`) via Fabric cross-database three-part naming - zero-copy, declared
+once in `_sources.yml`.
 
-### How columns are typed
-Every column is assigned by meaning, not appearance:
-- Identifiers / codes → varchar (msa and postal_code are digits but are labels)
-- Dates (YYYYMM) → date
-- Whole quantities → int
-- Money / rates → decimal
+### Why this layer exists
+Bronze holds every column as text - a faithful copy of source. Typing is deferred
+to here so it's a deliberate, reviewable, *tested* decision rather than a silent
+cast at load time. That means a source sentinel like `9999` can never quietly
+become a real number, and leading zeros are never lost by accident.
+
+### How columns are typed - meaning, not appearance
+Every column is assigned to one of four buckets by what it *means*, not what it
+looks like:
+- **Identifiers / codes → `varchar`** - including numeric-looking labels like
+  `msa`, `postal_code`, `zero_balance_code`, and `property_valuation_method`. You
+  never do arithmetic on these, and casting them to numbers would strip meaningful
+  leading zeros.
+- **Dates (YYYYMM) → `date`** - via a `+ '01'` cast to the first of the month.
+- **Whole-number quantities → `int`** - counts and terms you'd average or band.
+- **Money / rates → `decimal`** - sized by *profiling* the data, not guessing.
+
+Two subtleties that drive the calls:
+- **Zero-padding does not force text.** A padded *count* like `054` months is still
+  a quantity → `int`. Only a genuine non-numeric value (e.g. `RA`) or a code whose
+  leading zero is part of its identity (e.g. `01`) forces `varchar`.
+- **Decimals are sized by profiling, not assumption.** Precision/scale are set from
+  a `MIN`/`MAX` query against the real column, because `try_cast` silently returns
+  `null` on overflow - an undersized decimal would quietly delete the largest values
+  (exactly the loans a loss analysis most needs). Signed money fields are profiled at
+  *both* ends: for escrow fields the sign is information (negative = disbursed,
+  positive = refund), so it's preserved, never `ABS()`-ed.
+
+### `cast` vs `try_cast` - assert vs tolerate
+The choice encodes how much a column is trusted:
+- **Keys / identifiers use `cast`** - assert the format and *fail loudly* if it's
+  wrong. A silently-nulled or truncated join key is catastrophic (nulls don't join,
+  so rows vanish with no error), so on `loan_sequence_number` a hard `cast` is a
+  deliberate tripwire.
+- **Descriptive payload uses `try_cast`** - tolerate real-world mess by turning a
+  bad value into `null`, then catch it with tests rather than crashing the run.
 
 ### Sentinels vs real zeros
-Per the Freddie Mac layout, "not available" codes (e.g. 9999 credit score,
-999 LTV) are converted to null before casting, so a missing value never
-masquerades as a real number in an average. A real zero (000 = no MI) is
-kept - it's data, not a sentinel.
+Per the Freddie Mac layout, documented "not available" codes are converted to `null`
+*before* casting, per column (e.g. `9999` credit score, `999` for LTV / CLTV / DTI /
+ELTV), so a missing value never masquerades as a real number in an average. This is
+done from the **published data dictionary, not the sample** - a value absent in the
+2018 file may still be a defined sentinel, so the model codes to the spec. Crucially,
+a **real zero is not a sentinel**: `000` = no mortgage insurance and `0.00` = a real
+recovery are kept as data. Nulling them would erase an entire legitimate population
+and silently corrupt any average.
 
-### Testing
-Tests turn intentions into checks:
-- unique + not_null on loan_sequence_number → proves the grain (one row = one loan)
-- accepted_values on coded fields → columns hold only documented codes
-- accepted_range on credit_score (300–850) → proves sentinel handling worked
+### Delinquency status - the analytical backbone
+`current_loan_delinquency_status` is kept as `varchar(3)`, and it's the most
+important field in the project. It's an MBA-method code where each integer is a
+30-day band (`0` = current, `1` = 30–59 days, `2` = 60–89, `3` = 90–119, up to ~`70`)
+plus `RA` = REO acquisition. Two reasons it stays text: the `RA` code would be lost
+by a numeric cast (nulling exactly the distressed loans an arrears analysis needs),
+and the field is overloaded - part quantity, part status. It's preserved faithfully
+here and split downstream in gold into a numeric `months_delinquent` and a
+categorical `loan_status`. The governance "90+ days delinquent" threshold maps to
+**status ≥ 3**.
 
+### Testing - claims worth proving, sized to risk
+Tests assert specific failure modes, not coverage for its own sake - each one below
+names the risk it guards against.
 
-**All six tests green. The accepted_range test on credit_score is the proof the 9999 sentinel was fully nulled, a survivor would turn this run red.**
-![Silver layer dbt tests passing](docs/images/2-silver-layer-dbt-tests.png)
+**stg_origination** (grain: one loan)
+- `unique` + `not_null` on `loan_sequence_number` - proves the grain (one row = one loan).
+- `not_null` on structurally-required fields - catches a `try_cast` that silently nulled a value that should always parse.
+- `accepted_values` on `occupancy_status` - the column only ever holds documented codes.
+- `dbt_utils.accepted_range` (300–850) on `credit_score` - proves the `9999` sentinel was fully nulled; a survivor turns this red.
 
+**stg_performance** (grain: one loan per reporting month)
+- `dbt_utils.unique_combination_of_columns` on (`loan_sequence_number`, `monthly_reporting_period`) - proves the composite loan-month grain over ~2M rows.
+- `not_null` on both key columns and on the delinquency status.
+- `relationships` to `stg_origination` - proves referential integrity: every one of the ~2M performance rows traces back to a real originated loan (zero orphans), so the origination-to-performance join can't silently drop or duplicate rows.
 
+The single-key and composite-key tests prove each table's grain; the `relationships`
+test proves the two are structurally sound to join - the foundation the gold star
+schema is built on.
+
+![Silver layer dbt tests passing for origination](docs/images/2-silver-layer-dbt-tests.png)
+*stg_origination: all six tests green. The `accepted_range` test on `credit_score`
+is the proof the `9999` sentinel was fully nulled - a survivor would turn this red.*
+
+![Silver layer dbt tests passing for performance](docs/images/2.1-silver-layer-dbt-tests.png)
+*stg_performance: `composite grain` and `referential integrity` to origination, both green.*
 
 
 ### Reproducing the dbt setup
