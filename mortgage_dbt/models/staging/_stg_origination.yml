@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_origination
+    description: "One row per loan at origination, typed from bronze. Grain: one loan."
+    columns:
+      - name: loan_sequence_number
+        description: "Unique loan identifier — the grain of this model."
+        tests:
+          - unique
+          - not_null
+
+      - name: first_payment_date
+        description: "The date of the first payment due on the loan. This is a date field."
+        tests:
+          - not_null
+
+      - name: original_upb
+        description: "Original unpaid principal balance (UPB) of the loan at origination."
+        tests:
+          - not_null
+
+      - name: occupancy_status
+        description: "Occupancy code (P=Primary, S=Second, I=Investment)."
+        tests:
+          - accepted_values:
+              values: ['P', 'S', 'I']
+
+      - name: credit_score
+        description: "FICO score; 9999 sentinel converted to null in staging."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 300
+              max_value: 850

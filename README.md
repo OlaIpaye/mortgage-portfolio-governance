@@ -23,7 +23,7 @@ flowchart LR
     end
     subgraph XFORM["Silver + Gold · dbt on Fabric Warehouse"]
         direction TB
-        STG["staging — deliberate typing<br/>9999→null · text→dates/numbers"]
+        STG["staging - deliberate typing<br/>9999→null · text→dates/numbers"]
         TST["dbt tests<br/>data quality"]
         STAR["star schema<br/>dim + fact marts"]
         STG --> TST --> STAR
@@ -102,7 +102,36 @@ The bronze layer follows two principles:
 **Reconciliation check - raw line count vs loaded rows**
 ![Table load reconciliation checks](docs/images/1.3-reconciliation-checks.png)
 
-##
+## Silver / staging layer (dbt on Fabric Warehouse)
+
+### Why this layer exists
+Bronze layer holds every column as text, a faithful copy of source. Typing is
+deferred to here so it's a deliberate, reviewable, *tested* decision rather than a silent cast at load time.
+
+### How columns are typed
+Every column is assigned by meaning, not appearance:
+- Identifiers / codes → varchar (msa and postal_code are digits but are labels)
+- Dates (YYYYMM) → date
+- Whole quantities → int
+- Money / rates → decimal
+
+### Sentinels vs real zeros
+Per the Freddie Mac layout, "not available" codes (e.g. 9999 credit score,
+999 LTV) are converted to null before casting, so a missing value never
+masquerades as a real number in an average. A real zero (000 = no MI) is
+kept - it's data, not a sentinel.
+
+### Testing
+Tests turn intentions into checks:
+- unique + not_null on loan_sequence_number → proves the grain (one row = one loan)
+- accepted_values on coded fields → columns hold only documented codes
+- accepted_range on credit_score (300–850) → proves sentinel handling worked
+
+
+**All six tests green. The accepted_range test on credit_score is the proof the 9999 sentinel was fully nulled, a survivor would turn this run red.**
+![Silver layer dbt tests passing](docs/images/2-silver-layer-dbt-tests.png)
+
+
 
 
 ### Reproducing the dbt setup
