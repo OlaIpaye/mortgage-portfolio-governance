@@ -1,0 +1,8 @@
+{
+  // Point VS Code's Python tooling at the project venv (has dbt-core + dbt-fabric installed).
+  "python.defaultInterpreterPath": "C:/Users/44756/OneDrive/Documents/Courses/mortgage-portfolio-governance/.venv/Scripts/python.exe",
+
+  // dbt Power User extension: Python interpreter that has dbt installed.
+  // Fixes: "dbt configuration is invalid : dbt not found. Please install dbt to use this extension."
+  "dbt.powerUser.pythonPath": "C:/Users/44756/OneDrive/Documents/Courses/mortgage-portfolio-governance/.venv/Scripts/python.exe"
+}

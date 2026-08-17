@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: int_performance_delinquency_split
+    description: "One row per loan per reporting month, with delinquency status split into separate columns for each delinquency code. Grain: loan-month."
+    columns:
+      - name: months_delinquent
+        description: "Number of months delinquent for the loan in the reporting month. NULL indicates the loan is not on a numeric delinquency band (e.g. REO Acquisition, code 'RA')."
+
+      - name: loan_status
+        description: "Current status of the loan (e.g., Current, 30 Days Delinquent, REO Acquisition)."
+        tests:
+          # only these exact values are allowed - catches typos or unhandled bands
+          - accepted_values:
+              arguments:
+                values: ['Current', '30 Days Delinquent', '60 Days Delinquent', '90+ Days Delinquent', 'REO Acquisition', 'Unknown']
+                
