@@ -196,6 +196,42 @@ is the proof the `9999` sentinel was fully nulled - a survivor would turn this r
 ![Silver layer dbt tests passing for performance](docs/images/2.1-silver-layer-dbt-tests.png)
 *stg_performance: `composite grain` and `referential integrity` to origination, both green.*
 
+## Intermediate + Gold layer (dbt on Fabric Warehouse)
+
+### Intermediate - splitting the delinquency status
+
+- `current_loan_delinquency_status` is overloaded: part numeric quantity, part
+categorical status (including the `RA` = REO code, which can't survive a numeric
+cast).
+- `int_performance_delinquency_split` resolves this by deriving two columns
+from it - `months_delinquent` (int, via `try_cast`, `null` for REO) and `loan_status`
+(varchar, a `CASE` mapping every band into a label, with `90+ Days Delinquent`
+covering the governance threshold and everything above it). Grain is unchanged from
+`stg_performance` (one row per loan per reporting month); every original column is
+carried through for traceability.
+
+
+![int_performance_delinquency_split columns](docs/images/2.2-int-performance-delinquency-split-columns.png)
+*months_delinquent (int) and loan_status (varchar) derived as separate columns from
+the overloaded current_loan_delinquency_status field.*
+
+### Gold - dim_loan
+
+- `dim_loan` is a Type 1 conformed dimension built from `stg_origination`: one row
+per loan, fixed origination attributes (no history needed, since none of these
+values legitimately change after the loan is written). A surrogate key
+(`loan_key`, integer, via `ROW_NUMBER() OVER (ORDER BY loan_sequence_number)`) is
+generated for downstream joins, in place of the natural key - cheaper to join and
+index than the `varchar` `loan_sequence_number`, which is kept on the table for
+traceability only.
+
+![dim_loan table overview](docs/images/3-dim-loan-table-overview.png)
+*50,000 rows, one per loan, confirming the grain matches the origination sample.*
+
+![dim_loan YAML tests](docs/images/3.1-dim-loan-yml-tests.png)
+*unique + not_null on both loan_key and loan_sequence_number, passing - the highest-stakes
+test in this model, since a broken surrogate key would silently corrupt every join
+to fct_performance.*
 
 ### Reproducing the dbt setup
 The dbt connection profile isn't committed, as it points at a specific Fabric Warehouse endpoint. To run this yourself: copy `mortgage_dbt/profiles.example.yml` to `~/.dbt/profiles.yml`, set `server` to your own Warehouse SQL connection string, run `az login`, then `dbt debug` from the `mortgage_dbt/` folder.
