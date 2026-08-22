@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: dim_loan
+    description: "The dim_loan table is a Type 1 conformed dimension table that contains descriptive attributes of loans, fixed at origination. One row per loan. Surrogate key (loan_key) generated via ROW_NUMBER(), ordered by loan_sequence_number. It is used for filtering and grouping in analyses."
+    columns:
+      - name: loan_key
+        description: "Surrogate key for this dimension. Generated via ROW_NUMBER() over loan_sequence_number. Used by fct_performance as the foreign key, in place of the natural key."
+        tests:
+          - unique
+          - not_null
+
+      - name: loan_sequence_number
+        description: "The natural key for the loan, kept for traceability back to the source. Not used for downstream joins."
+        tests:
+          - unique
+          - not_null
