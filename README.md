@@ -7,7 +7,7 @@ loan-level data flows through a Lakehouse, into a dbt-built star schema, and out
 
 - Across the 2018 origination vintage sample, **1.35%** of loan-months show 90+ day delinquency, out of ~2M loan-months across the full 50k loan portfolio.
 - Delinquency rate varies meaningfully by occupancy type: **primary residences (1.41%)** run higher than **investment properties (1.10%)** and **second homes (0.68%)**. Further segmentation by credit score/LTV is needed in order to understand why.
-- Severity is concentrated at the lower bands: only 18 loans across the entire sample ever reached REO (repossession), suggesting most arrears resolve before reaching that stage.
+- Severity is concentrated at the low end: **5.4% of loans (2,681 of 50,000)** experienced 90+ day delinquency at some point in their life, but only **0.04% (18 loans)** progressed all the way to REO Aquisition (repossession), most arrears resolve before reaching that stage.
 
 **Project Architecture**
 ![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/project-architecture-preview.png)
@@ -236,6 +236,24 @@ traceability only.
 *unique + not_null on both loan_key and loan_sequence_number, passing - the highest-stakes
 test in this model, since a broken surrogate key would silently corrupt every join
 to fct_performance.*
+
+### Gold - fct_performance
+
+- `fct_performance` is a periodic snapshot fact table: one row per loan per reporting
+month, joined to `dim_loan` on `loan_sequence_number` to inherit `loan_key` as the
+foreign key (the join happens once at build time, not on every downstream query and 
+every report afterward joins on the integer key). Carries `months_delinquent`
+and `loan_status` from the intermediate layer, plus every additive measure (UPB,
+recoveries, expenses, losses) and non-additive descriptive attribute (modification
+flag, zero balance code) from the source performance file, all at the same
+loan-month grain.
+
+A derived `is_90_plus_delinquent` flag (`bit`) marks the governance threshold
+explicitly: `months_delinquent >= 3` is `1`, everything else - including REO loans,
+where `months_delinquent` is `null` - is deliberately cast to `0`.
+
+Summary Findings queries validating row counts, arrears distribution, and referential integrity against the live warehouse are in
+[`docs/sql/summary_findings.sql`](docs/sql/summary_findings.sql).
 
 ### Reproducing the dbt setup
 The dbt connection profile isn't committed, as it points at a specific Fabric Warehouse endpoint. To run this yourself: copy `mortgage_dbt/profiles.example.yml` to `~/.dbt/profiles.yml`, set `server` to your own Warehouse SQL connection string, run `az login`, then `dbt debug` from the `mortgage_dbt/` folder.

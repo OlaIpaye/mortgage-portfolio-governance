@@ -32,3 +32,14 @@ select count(*)
 from wh_mortgage.dbo.fct_performance f
 left join wh_mortgage.dbo.dim_loan d on f.loan_key = d.loan_key
 where d.loan_key is null
+
+-- 6. Loans that ever experienced 90+ delinquency or REO
+select
+    count(distinct loan_sequence_number) as total_loans,
+    count(distinct case when is_90_plus_delinquent = 1 then loan_sequence_number end) as loans_ever_90_plus,
+    count(distinct case when loan_status = 'REO Acquisition' then loan_sequence_number end) as loans_ever_reo,
+    cast(count(distinct case when is_90_plus_delinquent = 1 then loan_sequence_number end) as decimal(10,4)) 
+        / count(distinct loan_sequence_number) * 100 as pct_loans_ever_90_plus,
+    cast(count(distinct case when loan_status = 'REO Acquisition' then loan_sequence_number end) as decimal(10,4)) 
+        / count(distinct loan_sequence_number) * 100 as pct_loans_ever_reo
+from wh_mortgage.dbo.fct_performance
