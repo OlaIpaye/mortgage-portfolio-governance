@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: fct_performance
+    description: "Periodic snapshot fact table. One row per loan per reporting month. Grain proven by the composite key (loan_sequence_number, monthly_reporting_period)."
+    columns:
+      - name: loan_key
+        description: "Foreign key to dim_loan, inherited via join on loan_sequence_number."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_loan')
+                field: loan_key
+
+      - name: loan_sequence_number
+        description: "Degenerate dimension - the loan identifier, carried directly on the fact table."
+        tests:
+          - not_null
+
+      - name: monthly_reporting_period
+        description: "The reporting month for this snapshot of performance data."
+        tests:
+          - not_null
+          
+      - name: is_90_plus_delinquent
+        description: "90+ days delinquent flag (bit). True when months_delinquent >= 3. REO loans (months_delinquent is null) are explicitly false, not unknown."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+
+    # Additional tests to ensure the fact table's grain is unique per loan per month.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - loan_sequence_number
+              - monthly_reporting_period

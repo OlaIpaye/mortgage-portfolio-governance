@@ -1,9 +1,13 @@
 # Mortgage Portfolio Product Governance & Performance Review
 
 An end-to-end analytics-engineering project on Microsoft Fabric. Freddie Mac
-loan-level data flows through a Lakehouse, into a dbt-built star schema, and out
-to a Direct Lake Power BI governance pack. Built as the quarterly governance pack
-a Product Analyst at a UK lender would produce.
+loan-level data flows through a Lakehouse, into a dbt-built star schema, and out to a Direct Lake Power BI governance pack. Built as the quarterly governance pack a Product Analyst at a UK lender would produce.
+
+## Key Findings
+
+- Across the 2018 origination vintage sample, **1.35%** of loan-months show 90+ day delinquency, out of ~2M loan-months across the full 50k loan portfolio.
+- Delinquency rate varies meaningfully by occupancy type: **primary residences (1.41%)** run higher than **investment properties (1.10%)** and **second homes (0.68%)**. Further segmentation by credit score/LTV is needed in order to understand why.
+- Severity is concentrated at the lower bands: only 18 loans across the entire sample ever reached REO (repossession), suggesting most arrears resolve before reaching that stage.
 
 **Project Architecture**
 ![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/project-architecture-preview.png)
