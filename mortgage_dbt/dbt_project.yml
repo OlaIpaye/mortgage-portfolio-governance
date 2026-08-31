@@ -27,3 +27,7 @@ models:
       +materialized: view
     marts:
       +materialized: table
+
+vars:
+  date_spine_start: '2018-01-01'
+  date_spine_end: '2025-12-31'

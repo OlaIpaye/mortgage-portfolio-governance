@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Conformed date dimension. Generated at daily grain across whole calendar
+      years (2018-2025). Required by Power BI "Mark as Date Table" and by all
+      DAX time intelligence. Joined from fct_performance on date_key, aligned
+      to the last day of each reporting month.
+    columns:
+      - name: date_key
+        description: Surrogate key, YYYYMMDD as int. Readable by design.
+        tests:
+          - unique
+          - not_null
+      - name: full_date
+        description: True date type. The column marked as the date table in Power BI.
+        tests:
+          - unique
+          - not_null
+      - name: year_month
+        description: YYYY-MM label for trend axes. Sorts correctly as text.
+      - name: year_quarter
+        description: "YYYY Qn label for quarterly governance review grouping."
+      - name: month_name
+        description: Readable axis label. Sort by month_number in Power BI.
+      - name: is_month_end
+        description: Period-boundary flag for closing-balance measures.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
