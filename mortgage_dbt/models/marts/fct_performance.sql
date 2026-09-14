@@ -65,10 +65,32 @@ select
     performance.current_actual_upb,
     performance.current_interest_rate,
     performance.loan_age,
+
+    -- seasoning band, boundaries match query C2 in docs/sql/summary_findings.sql
+    -- so the Power BI visual reconciles against the validated SQL.
+    -- Zero-padded so it sorts correctly as text, no sort-by column needed.
+    case
+        when performance.loan_age is null then 'Unknown'
+        when performance.loan_age < 0 then 'Unknown'
+        when performance.loan_age <= 11 then '00-11'
+        when performance.loan_age <= 23 then '12-23'
+        when performance.loan_age <= 35 then '24-35'
+        when performance.loan_age <= 47 then '36-47'
+        when performance.loan_age <= 59 then '48-59'
+        when performance.loan_age <= 71 then '60-71'
+        else '72+'
+    end as loan_age_band,
+
     performance.remaining_months_to_legal_maturity,
     performance.defect_settlement_date,
+
+    -- raw code kept alongside its decode for traceability
     performance.modification_flag,
+    performance.modification_status,
+
     performance.zero_balance_code,
+    performance.zero_balance_desc,
+
     performance.zero_balance_effective_date,
     performance.current_deferred_upb,
     performance.ddlpi,
@@ -87,8 +109,13 @@ select
     performance.eltv,
     performance.zero_balance_removal_upb,
     performance.delinquent_accrued_interest,
+
     performance.delinquency_due_to_disaster,
+    performance.disaster_delinquency_status,
+
     performance.borrower_assistance_status_code,
+    performance.assistance_plan_type,
+
     performance.current_month_modification_cost,
     performance.interest_bearing_upb
 

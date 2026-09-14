@@ -22,7 +22,7 @@ models:
         description: "The reporting month for this snapshot of performance data."
         tests:
           - not_null
-          
+
       - name: is_90_plus_delinquent
         description: "90+ days delinquent flag (bit). True when months_delinquent >= 3. REO loans (months_delinquent is null) are explicitly false, not unknown."
         tests:
@@ -38,6 +38,84 @@ models:
               arguments:
                 to: ref('dim_date')
                 field: date_key
+
+      # Decoded performance codes, carried through from the intermediate model.
+      # Already tested upstream; retested here because the fact is the surface
+      # the semantic model reads, and an explicit select list can silently drop
+      # a column between the two.
+
+      - name: modification_status
+        description: "Decoded modification_flag. NULL in source means not modified, a confirmed state rather than missing data."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Modified in current period'
+                  - 'Modified in prior period'
+                  - 'Not modified'
+                  - 'Unknown'
+
+      - name: zero_balance_desc
+        description: "Decoded zero_balance_code. NULL in source means the loan is still active with no termination event."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Active, no termination event'
+                  - 'Prepaid or matured'
+                  - 'Third party sale'
+                  - 'Short sale or charge off'
+                  - 'REO disposition'
+                  - 'Whole loan sale'
+                  - 'Reperforming loan securitisation'
+                  - 'Defect prior to other termination'
+                  - 'Unknown'
+
+      - name: disaster_delinquency_status
+        description: "Decoded delinquency_due_to_disaster. Only populated by Freddie Mac from January 2014. Carries the 2020 to 2021 forbearance finding alongside assistance_plan_type."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Disaster related'
+                  - 'Not disaster related'
+                  - 'Unknown'
+
+      - name: assistance_plan_type
+        description: "Decoded borrower_assistance_status_code. NULL in source means no workout plan or not applicable, not missing data. Disaster flagging is broader than formal forbearance, the two counts do not match."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Forbearance'
+                  - 'Repayment plan'
+                  - 'Trial period'
+                  - 'No assistance plan'
+                  - 'Unknown'
+
+      # Seasoning band. Boundaries match query C2 in docs/sql/summary_findings.sql
+      # so the Page 2 visual reconciles against the validated SQL. Labels are
+      # zero-padded so Power BI's alphabetical sort produces the correct order.
+
+      - name: loan_age_band
+        description: "Months-on-book band derived from loan_age. Lives on the fact, not the dimension, because months-on-book needs both a loan and a date to pin down. Population declines across bands through attrition, so cross-band comparison is subject to selection."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - '00-11'
+                  - '12-23'
+                  - '24-35'
+                  - '36-47'
+                  - '48-59'
+                  - '60-71'
+                  - '72+'
+                  - 'Unknown'
 
     # Additional tests to ensure the fact table's grain is unique per loan per month.
     tests:

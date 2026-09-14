@@ -15,3 +15,206 @@ models:
         tests:
           - unique
           - not_null
+
+      # Decoded attributes. Each raw code column is retained alongside its decode.
+      # Value sets follow the Freddie Mac layout spec, not the values present in
+      # this extract, so a future vintage carrying a legitimate code does not fail.
+      # 'Unknown' catches anything the spec does not document.
+
+      - name: occupancy_type
+        description: "Decoded occupancy_status. Drives the Page 1 balance-by-occupancy chart and the Page 3 outcome comparison."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Primary residence'
+                  - 'Investment property'
+                  - 'Second home'
+                  - 'Not available'
+                  - 'Unknown'
+
+      - name: channel_desc
+        description: "Decoded channel. Central to the Page 3 distribution fairness question."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Retail'
+                  - 'Broker'
+                  - 'Correspondent'
+                  - 'TPO not specified'
+                  - 'Not available'
+                  - 'Unknown'
+
+      - name: loan_purpose_desc
+        description: "Decoded loan_purpose. Spec permits five values; this extract carries three."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Purchase'
+                  - 'Refinance, cash out'
+                  - 'Refinance, no cash out'
+                  - 'Refinance, not specified'
+                  - 'Not available'
+                  - 'Unknown'
+
+      - name: property_type_desc
+        description: "Decoded property_type."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Single-family'
+                  - 'Condo'
+                  - 'PUD'
+                  - 'Manufactured housing'
+                  - 'Co-op'
+                  - 'Not available'
+                  - 'Unknown'
+
+      - name: first_time_homebuyer_desc
+        description: "Decoded first_time_homebuyer_flag. Spec code 9 means not available OR not applicable, the two are not distinguishable."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'First time buyer'
+                  - 'Not first time buyer'
+                  - 'Not available or not applicable'
+                  - 'Unknown'
+
+      - name: amortization_type_desc
+        description: "Decoded amortization_type. Single-valued in this extract: the Standard Dataset contains only fixed-rate loans, so this evidences product homogeneity rather than supporting comparison."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Fixed rate'
+                  - 'Adjustable rate'
+                  - 'Unknown'
+
+      - name: property_valuation_method_desc
+        description: "Decoded property_valuation_method. 97% not available in this extract, so not usable for analysis. ACE+ PDR applies only to originations from 17 July 2022, so it cannot appear on a 2018 book."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Appraisal waiver (ACE)'
+                  - 'Appraisal'
+                  - 'Other'
+                  - 'ACE plus PDR'
+                  - 'Not available'
+                  - 'Unknown'
+
+      - name: program_indicator_desc
+        description: "Decoded program_indicator. Identifies affordable lending programmes: Home Possible, HFA Advantage, Refi Possible."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Home Possible'
+                  - 'HFA Advantage'
+                  - 'Refi Possible'
+                  - 'Not available or not applicable'
+                  - 'Unknown'
+
+      - name: ppm_desc
+        description: "Decoded ppm_flag. Single-valued in this extract."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Prepayment penalty mortgage'
+                  - 'Not a prepayment penalty mortgage'
+                  - 'Unknown'
+
+      - name: super_conforming_desc
+        description: "Decoded super_conforming_flag. Source is Y or absent; the spec says a single space, this extract gives NULL, both mean not super conforming."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Super conforming'
+                  - 'Not super conforming'
+                  - 'Unknown'
+
+      - name: relief_refinance_desc
+        description: "Decoded harp_indicator, which is the Relief Refinance Indicator. NOT a HARP flag: HARP loans are the subset of relief refinances with original LTV above 80, and must be derived if needed."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Relief refinance'
+                  - 'Not relief refinance'
+                  - 'Unknown'
+
+      - name: interest_only_desc
+        description: "Decoded interest_only_indicator. Single-valued in this extract: the Standard Dataset excludes initial interest loans."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Interest only'
+                  - 'Not interest only'
+                  - 'Unknown'
+
+      - name: mi_cancellation_desc
+        description: "Decoded mi_cancellation_indicator. Codes 7 and 9 are distinct: no MI ever existed, versus not disclosed."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'MI cancelled'
+                  - 'MI not cancelled'
+                  - 'Not applicable, no MI'
+                  - 'Not disclosed'
+                  - 'Unknown'
+
+      # Banding columns. Boundaries are a business-logic decision, held in dbt so
+      # they are version controlled and testable, and so the Power BI visual
+      # reconciles against docs/sql/summary_findings.sql. Labels are numerically
+      # prefixed so Power BI's alphabetical sort produces the correct order.
+
+      - name: credit_score_band
+        description: "Credit score band. 9999 is the layout's Not Available sentinel, isolated so it never falls inside a scored band. Below 620 holds only 87 loans, too thin to interpret alone on Page 3."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - '1. Below 620'
+                  - '2. 620-659'
+                  - '3. 660-699'
+                  - '4. 700-739'
+                  - '5. 740-779'
+                  - '6. 780 and above'
+                  - 'Not available'
+
+      - name: original_ltv_band
+        description: "Original LTV band. 999 is the layout's Not Available sentinel. The 80 boundary is the meaningful one, above it mortgage insurance is generally required, and the distribution clusters just below it."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - '1. 60 and below'
+                  - '2. 61-70'
+                  - '3. 71-80'
+                  - '4. 81-90'
+                  - '5. 91-95'
+                  - '6. Above 95'
+                  - 'Not available'
