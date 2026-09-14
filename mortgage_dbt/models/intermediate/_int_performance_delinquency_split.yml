@@ -9,9 +9,62 @@ models:
 
       - name: loan_status
         description: "Current status of the loan (e.g., Current, 30 Days Delinquent, REO Acquisition)."
-        tests:
+        data_tests:
           # only these exact values are allowed - catches typos or unhandled bands
+          - not_null
           - accepted_values:
               arguments:
                 values: ['Current', '30 Days Delinquent', '60 Days Delinquent', '90+ Days Delinquent', 'REO Acquisition', 'Unknown']
-                
+
+      - name: modification_status
+        description: "Decoded modification_flag. NULL in source means not modified, which is a confirmed state, not missing data."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Modified in current period'
+                  - 'Modified in prior period'
+                  - 'Not modified'
+                  - 'Unknown'
+
+      - name: zero_balance_desc
+        description: "Decoded zero_balance_code. NULL in source means the loan is still active with no termination event."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Active, no termination event'
+                  - 'Prepaid or matured'
+                  - 'Third party sale'
+                  - 'Short sale or charge off'
+                  - 'REO disposition'
+                  - 'Whole loan sale'
+                  - 'Reperforming loan securitisation'
+                  - 'Defect prior to other termination'
+                  - 'Unknown'
+
+      - name: disaster_delinquency_status
+        description: "Decoded delinquency_due_to_disaster. Only populated by Freddie Mac for January 2014 onwards."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Disaster related'
+                  - 'Not disaster related'
+                  - 'Unknown'
+
+      - name: assistance_plan_type
+        description: "Decoded borrower_assistance_status_code. NULL in source means no workout plan or not applicable, not missing data. Carries the 2020 to 2021 forbearance finding."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Forbearance'
+                  - 'Repayment plan'
+                  - 'Trial period'
+                  - 'No assistance plan'
+                  - 'Unknown'

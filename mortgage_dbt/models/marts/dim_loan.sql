@@ -17,6 +17,7 @@ select
     -- descriptive / filterable / groupable attributes, fixed at origination
     first_time_homebuyer_flag,
     occupancy_status,
+    original_interest_rate,
     channel,
     property_state,
     property_type,
@@ -34,6 +35,7 @@ select
     original_cltv,
     original_dti,
     msa,
+    mi_pct,
     number_of_units,
     amortization_type,
     ppm_flag,

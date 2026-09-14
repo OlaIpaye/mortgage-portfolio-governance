@@ -24,11 +24,31 @@ models:
         description: "Occupancy code (P=Primary, S=Second, I=Investment)."
         tests:
           - accepted_values:
-              values: ['P', 'S', 'I']
+              arguments:
+                values: ['P', 'S', 'I']
 
       - name: credit_score
         description: "FICO score; 9999 sentinel converted to null in staging."
         tests:
           - dbt_utils.accepted_range:
-              min_value: 300
-              max_value: 850
+              arguments:
+                min_value: 300
+                max_value: 850
+
+      - name: mi_pct
+        description: "MI coverage percentage. Spec range 1-55; 0 = no MI (genuine information, retained); 999 = Not Available."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 55
+                inclusive: true
+
+      - name: original_interest_rate
+        description: "Note rate at origination, as a percentage (e.g. 4.500 = 4.5%). The price variable underpinning fair value analysis. Observed range in this 2018 sample: 2.500 to 6.750."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 20
+                inclusive: true

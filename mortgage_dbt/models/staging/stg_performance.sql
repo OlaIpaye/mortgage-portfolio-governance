@@ -24,7 +24,7 @@ select
 
     cast(modification_flag as varchar(1))                  as modification_flag,
 
-    -- contains numbers tha tstarted with zero, so keep as text.
+    -- contains numbers that tstarted with zero, so keep as text.
     cast(zero_balance_code as varchar(2))                  as zero_balance_code,
 
     try_cast(zero_balance_effective_date + '01' as date)   as zero_balance_effective_date,
