@@ -25,6 +25,15 @@ select
     end as loan_status,
 
     case
+        when months_delinquent = 0 then 0
+        when months_delinquent = 1 then 1
+        when months_delinquent = 2 then 2
+        when months_delinquent >= 3 then 3
+        when current_loan_delinquency_status = 'RA' then 4
+        else 9
+    end as loan_status_sort,
+
+    case
         when zero_balance_code is null then 'Active, no termination event'
         when zero_balance_code = '01' then 'Prepaid or matured'
         when zero_balance_code = '02' then 'Third party sale'

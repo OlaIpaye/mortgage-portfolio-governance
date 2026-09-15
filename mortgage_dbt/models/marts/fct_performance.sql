@@ -51,6 +51,7 @@ select
     -- measures carried from the intermediate model
     performance.months_delinquent,
     performance.loan_status,
+    performance.loan_status_sort,
 
     -- 90+ arrears flag: bit type (Fabric/T-SQL's native yes/no type)
     -- REO (months_delinquent is null) falls through to 0, not null:
