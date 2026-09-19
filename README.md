@@ -3,52 +3,119 @@
 An end-to-end analytics-engineering project on Microsoft Fabric. Freddie Mac
 loan-level data flows through a Lakehouse, into a dbt-built star schema, and out to a Direct Lake Power BI governance pack. Built as the quarterly governance pack a Product Analyst at a UK lender would produce.
 
+## The Governance Pack
+
+Four pages, one question each.
+
+**Page 1, Portfolio Overview.** What is the position, and where is it heading?
+
+![Page 1, Portfolio Overview](docs/images/page-one-portfolio-overview-main.png)
+
+- *$1.51bn across 10,544 loans as at 30 September 2025, down from a peak of $10.89bn in March 2019. The count rate (1.05%) and the balance-weighted rate (1.52%) diverge because loans in arrears carry above-average balances. Both are reported because one tells the committee how many borrowers are affected and the other how much money is at risk.*
+
+**Page 2, Performance and Arrears.** Is the product performing as designed for the target market?
+
+![Page 2, Performance and Arrears](docs/images/page-two-performance-arrears.png)
+
+- *90+ arrears run at 0.10% in the first year on book, peak at 3.85% at 24 to 35 months, then settle near 0.75%. A roughly 40x spread around the 1.35% portfolio headline, which means any governance metric reported at portfolio level without controlling for seasoning is close to uninterpretable. The page also states the limit of the analysis: the book is effectively a single 2018 origination cohort, so months on book and calendar time are collinear and the COVID period cannot be separated from the age effect.*
+
+**Page 3, Price and Outcome Fairness.** Are outcomes and pricing consistent across groups?
+
+![Page 3, Price and Outcome Fairness](docs/images/page-three-price-and-outcome-fairness.png)
+
+- *Arrears fall from near 3.9% in the two lowest credit bands to 0.43% at 780 and above, and rise with LTV from 0.91% to 2.40%, so underwriting is measuring risk. The average origination rate moves under half a percentage point across the same range. Price is close to flat against a risk profile that varies by an order of magnitude.*
+
+**Page 4, Governance Summary.** What do we conclude, and what do we commit to?
+
+![Page 4, Governance Summary](docs/images/page-four-governance-summary.png)
+
+- *Conclusions, exceptions, limitations and recommended actions drawn from the preceding three pages. No new analysis. The limitations block names which Consumer Duty outcomes the dataset can and cannot evidence.*
+
+## Semantic model
+
+- `sem_mortgage_governance` is a Direct Lake model over three gold tables only. Staging and intermediate models are deliberately excluded. The three gold tables are for reporting purposes, while the excluded models were for implementation purposes.
+
+![fct_performance to dim_loan relationship](docs/images/fct-to-dim_loan-many-to-one.png)
+
+![fct_performance to dim_date relationship](docs/images/fct-to-dim_date-many-to-one.png)
+
+*Two relationships, many-to-one from the fact, single cross-filter direction. Bi-directional filtering is deliberately avoided because it creates ambiguous filter paths.*
+
+Three modelling decisions worth naming:
+
+- **`dim_date` is marked as the date table on `full_date`, not `date_key`.** Time intelligence cannot operate on an integer.
+- **`month_name` is sorted by `month_number`**, and the banding columns carry numeric or zero-padded prefixes, so text columns sort in business order without a separate sort-by column. `loan_status` does use a dedicated `loan_status_sort` column, because severity order is not alphabetical.
+- **Raw balance and date columns are hidden, and `current_actual_upb` is set to Summarize by: None**, so nobody can drag a raw balance onto a visual and get a figure 93 times too large. Raw code columns are hidden too, since every one now has a decoded version.
+
+![Fabric Warehouse object list](docs/images/fb-wh-object-list.png)
+
+*Six dbt objects in `wh_mortgage`: staging and intermediate materialised as views, the three gold marts as tables. Materialisation is set at folder level in `dbt_project.yml`.*
+
+## DAX measures
+
+Fourteen measures, all filed on `fct_performance` and all reconciled against SQL before use. SQL queries can be found here: [`docs/sql/summary_findings.sql`](docs/sql/summary_findings.sql)
+
+```
+Loan Months                = COUNTROWS(fct_performance)
+Loan Count                 = DISTINCTCOUNT(fct_performance[loan_sequence_number])
+Closing Balance            = CALCULATE(SUM(fct_performance[current_actual_upb]), LASTDATE(dim_date[full_date]))
+Average Balance            = AVERAGEX(VALUES(dim_date[year_month]), CALCULATE(SUM(fct_performance[current_actual_upb])))
+Arrears 90+ Loan Months    = CALCULATE(COUNTROWS(fct_performance), fct_performance[is_90_plus_delinquent] = TRUE())
+Arrears 90+ Rate           = DIVIDE([Arrears 90+ Loan Months], [Loan Months])
+Loans Ever 90+             = CALCULATE(DISTINCTCOUNT(fct_performance[loan_sequence_number]), fct_performance[is_90_plus_delinquent] = TRUE())
+Pct Loans Ever 90+         = DIVIDE([Loans Ever 90+], [Loan Count])
+Loans Ever REO             = CALCULATE(DISTINCTCOUNT(fct_performance[loan_sequence_number]), fct_performance[loan_status] = "REO Acquisition")
+Pct of Loans Ever REO      = DIVIDE([Loans Ever REO], [Loan Count])
+Balance in Arrears         = CALCULATE([Closing Balance], fct_performance[is_90_plus_delinquent] = TRUE())
+Arrears Rate (Bal Wtd)     = DIVIDE([Balance in Arrears], [Closing Balance])
+Average Origination Rate   = AVERAGE(dim_loan[original_interest_rate])
+Report Period              = "Mortgage Portfolio Governance Pack, reporting period to " & FORMAT(LASTDATE(dim_date[full_date]), "d MMMM yyyy")
+```
+
+Reconciled unfiltered against the warehouse: 1,998,728 loan-months, 50,000 loans, 26,949 arrears loan-months, 1.35% arrears rate, 2,681 loans ever 90+, 5.36%. All exact matches to the SQL queries in [`docs/sql/summary_findings.sql`](docs/sql/summary_findings.sql).
+
+![Closing Balance measure](docs/images/closing-balance.png)
+
+![Arrears 90+ Loan Months measure](docs/images/arrears-90-plus-loan-months.png)
+
+![Loans Ever 90+ measure](docs/images/loans-ever-90-plus-delinq.png)
+
+Three principles drove the measure design:
+
+- **Stocks versus flows.** Balances are photographs of an instant, semi-additive, so they sum across loans but never across time. Losses happened during a period and are fully additive. Rates are non-additive and must always be recomputed from numerator and denominator, which is exactly why they are measures and not stored columns.
+- **A periodic snapshot fact is naturally full of stocks**, so semi-additivity was guaranteed the moment that fact table design was chosen. `Closing Balance` uses `LASTDATE` for that reason.
+- **Measures are evaluated fresh in every cell**, against that cell's filter context. That is why one ratio measure gives the right answer at monthly, quarterly and annual grain without writing three versions.
+
+**A MS Fabric limitation worth noting:** SQL `bit` data type becomes Boolean in the semantic model, so `SUM` on a bit column throws error "The function SUM cannot work with values of type Boolean". So the arrears measures use `CALCULATE(COUNTROWS(...), [flag] = TRUE())` instead.
+
 ## Key Findings
 
-- Across the 2018 origination vintage sample, **1.35%** of loan-months show 90+ day delinquency, out of ~2M loan-months across the full 50k loan portfolio.
-- Delinquency rate varies meaningfully by occupancy type: **primary residences (1.41%)** run higher than **investment properties (1.10%)** and **second homes (0.68%)**. Further segmentation by credit score/LTV is needed in order to understand why.
-- Severity is concentrated at the low end: **5.4% of loans (2,681 of 50,000)** experienced 90+ day delinquency at some point in their life, but only **0.04% (18 loans)** progressed all the way to REO Aquisition (repossession), most arrears resolve before reaching that stage.
+1. **Portfolio position as at 30 September 2025.** $1.51bn across 10,544 loans, down from a peak of $10,894,329,219 in March 2019. An 86% fall in balance against 79% in loan count. The gap between those two percentages says the loans that left were larger than those remaining, consistent with the 2020 to 2021 refinancing wave.
+
+2. **Count rate and balance rate diverge.** 1.05% of loan-months against 1.52% of balance. Loans in arrears carry balances well above the portfolio average. Basis caveat: the count rate spans the quarter, the balance rate pins to `LASTDATE`, so it is a single instant. Not strictly like for like, and the governance pack labels it rather than forcing them to match.
+
+3. **Seasoning dominates the headline.** 90+ arrears run at 0.10% at 0 to 11 months on book, peak at 3.85% at 24 to 35 months, and decline to 0.75% beyond 72 months. A roughly 40x spread around the 1.35% headline.
+
+4. **The peak cannot be attributed to seasoning alone.** Borrower assistance rose from a ~0.05% baseline in 2018 and 2019 to 4.02% and 4.26% of loan-months in 2020 and 2021, with disaster coding accounting for nearly all of it. Because the book is effectively a single 2018 origination cohort (42,198 loans first-paying in 2018, 7,792 in 2019, 10 after), months-on-book and calendar time are collinear and the two effects cannot be separated within this dataset. Stating that limit is the finding.
+
+5. **Price is close to flat against risk.** Arrears fall from near 3.9% in the two lowest credit bands to 0.43% at 780 and above, roughly a ninefold difference, while the average origination rate moves under half a percentage point across the same range. The rate is also not consistently ordered by credit band at the bottom of the book, though the lowest band holds only 87 loans and is too thin to interpret alone.
+
+6. **Broker originated loans run 58% above retail.** 1.80% against 1.14%, with correspondent at 1.60% in between. Denominators are large (181,792 broker loan-months), so this is not a small-sample artifact. Not controlled for credit score, LTV or age mix, so it remains a selection effect until proven otherwise.
+
+7. **Occupancy ordering is counterintuitive and still unexplained.** Primary residence 1.41%, investment 1.10%, second home 0.68%. The usual assumption is that a borrower defends the home they live in first. Flagged honestly as needing segmentation by credit score, LTV and age band rather than explained away. Live hypothesis is underwriting selection: US investment property lending requires larger deposits, higher scores and cash reserves, so occupancy may be proxying for borrower affluence rather than measuring behaviour. The denominator is solid (193,473 investment loan-months).
+
+8. **Loan-level severity.** 5.4% of loans (2,681 of 50,000) ever hit 90+, only 0.04% (18 loans) reached REO. Most arrears resolve before repossession.
+
+## Scope, framing and what this is not
+
+**US data under UK framing.** The pack applies UK regulatory concepts (Consumer Duty, Fair Value, arrears governance) to US Freddie Mac loan-level data, because no comparable UK loan-level dataset is publicly available. **All figures are in USD, not GBP.** Some regulatory concepts do not transfer cleanly: UK buy-to-let is a different product under different rules from US investor lending, so the occupancy analysis is not a buy-to-let analysis.
+
+**This is price for risk dispersion, not a Fair Value Assessment.** Freddie Mac provides rates, LTV, DTI, credit score and channel. It provides no fees, no product transfer data and no complaints. Of the four Consumer Duty outcomes, products and services is evidenced here, price and value only partly, consumer support only indirectly (the borrower assistance data is modelled but not presented in the pack), and consumer understanding not at all.
+
+**Selection versus behaviour.** A difference between groups is a selection effect until proven otherwise. That applies to occupancy, to channel, to the age bands (loans leave the book non-randomly), and to the late-book arrears decline.
 
 **Project Architecture**
-![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/project-architecture-preview.png)
-
-```mermaid
-flowchart LR
-    subgraph SRC["Sources"]
-        FM["Freddie Mac SFLLD<br/>origination + performance"]
-        BOE["Bank of England<br/>MLAR + base rate"]
-    end
-    subgraph BRONZE["Bronze · Fabric Lakehouse"]
-        direction TB
-        SPARK["PySpark notebooks<br/>faithful load as text"]
-        BT["bronze_origination<br/>bronze_performance · Delta"]
-        AUD["lineage cols · load_audit<br/>reconciliation"]
-        SPARK --> BT --> AUD
-    end
-    subgraph XFORM["Silver + Gold · dbt on Fabric Warehouse"]
-        direction TB
-        STG["staging - deliberate typing<br/>9999→null · text→dates/numbers"]
-        TST["dbt tests<br/>data quality"]
-        STAR["star schema<br/>dim + fact marts"]
-        STG --> TST --> STAR
-    end
-    subgraph SERVE["Serving"]
-        direction TB
-        SEM["Direct Lake on OneLake<br/>semantic model"]
-        PBI["Power BI<br/>4-page governance pack"]
-        DOC["Fair Value memo<br/>Product Risk Review"]
-        SEM --> PBI --> DOC
-    end
-    SRC --> BRONZE --> XFORM --> SERVE
-    ADF["Data Factory · orchestration"] -.-> BRONZE
-    ADF -.-> XFORM
-    GH["GitHub · version control"] -.-> BRONZE
-    GH -.-> XFORM
-    style SRC fill:#b0bec5,stroke:#546e7a
-    style BRONZE fill:#d9a867,stroke:#8a5a24
-    style XFORM fill:#a9b7c6,stroke:#566573
-    style SERVE fill:#96c79a,stroke:#3e7a44
-```
+![Mortgage Portfolio Product Governance & Performance - Project Architecture preview](docs/images/mortgage-governance-project-overview.png)
 
 ## Data schema
 
@@ -219,6 +286,50 @@ carried through for traceability.
 *months_delinquent (int) and loan_status (varchar) derived as separate columns from
 the overloaded current_loan_delinquency_status field.*
 
+### Decoding the source codes
+
+Freddie Mac ships most categorical fields as single-character codes. Those are decoded
+into readable labels in dbt rather than in Power BI, with the raw code kept alongside
+each decode for traceability, because a governance committee should never be shown a
+column of P, I and S.
+
+Every `CASE` was written against the published layout spec, not against the values
+present in this extract. That caught five errors in the process:
+
+- `loan_purpose` permits five values, not the three present here. Coding to the sample
+  would have silently dumped "refinance, not specified" loans into an Unknown bucket on
+  the page whose job is showing that no group is treated differently.
+- `super_conforming_flag` and the relief refinance flag are Y or blank, not Y/N. Treating
+  them as Y/N would have mislabelled 95%+ of the book as missing data.
+- `mi_cancellation_indicator` has four states, and codes 7 and 9 are meaningfully
+  distinct (no MI ever existed, versus not disclosed).
+- The column inherited as `harp_indicator` is the **Relief Refinance Indicator**. HARP
+  loans are the subset with original LTV above 80, so the decode is named
+  `relief_refinance_desc` and the pack does not claim it identifies HARP.
+- `property_valuation_method` code 4 (ACE+ PDR) applies only to originations from 17
+  July 2022, so it cannot appear on a 2018 book. It is still coded, because the rule is
+  code to the spec, not the sample.
+
+Three fields on the performance side use `NULL` as a *meaningful* value:
+`modification_flag`, `delinquency_due_to_disaster` and `borrower_assistance_status_code`.
+A simple `CASE x WHEN NULL` never matches, so those use searched `CASE` expressions with
+an explicit `IS NULL` branch. This matters most for borrower assistance, where `NULL`
+means "no workout plan", a confirmed state. Labelling it Unknown would have made the page
+say the opposite of what the data says.
+
+Banding columns (`loan_age_band`, `credit_score_band`, `original_ltv_band`) live in dbt
+rather than Power BI because band definitions are business logic: they belong in version
+control, they are testable, and they guarantee the visual reconciles against the saved
+SQL. Boundaries were set after checking the actual distributions, so no band holds most
+of the book. `loan_age_band` uses exactly the boundaries of query C2 in
+`summary_findings.sql`.
+
+Every decoded column carries `not_null` and `accepted_values` tests against the full
+documented value set plus an Unknown catch-all. The `not_null` does real work here:
+`accepted_values` compares with `NOT IN`, which returns unknown against `NULL` and passes
+silently, so it cannot on its own detect a column that failed to build. The project
+carries 82 data tests, all passing.
+
 ### Gold - dim_loan
 
 - `dim_loan` is a Type 1 conformed dimension built from `stg_origination`: one row
@@ -228,6 +339,9 @@ values legitimately change after the loan is written). A surrogate key
 generated for downstream joins, in place of the natural key - cheaper to join and
 index than the `varchar` `loan_sequence_number`, which is kept on the table for
 traceability only.
+
+Six low-cardinality flags are kept as direct columns rather than collapsed into a junk
+dimension. That was considered and rejected given the scale of this project.
 
 ![dim_loan table overview](docs/images/3-dim-loan-table-overview.png)
 *50,000 rows, one per loan, confirming the grain matches the origination sample.*
@@ -250,10 +364,46 @@ loan-month grain.
 
 A derived `is_90_plus_delinquent` flag (`bit`) marks the governance threshold
 explicitly: `months_delinquent >= 3` is `1`, everything else - including REO loans,
-where `months_delinquent` is `null` - is deliberately cast to `0`.
+where `months_delinquent` is `null` - is deliberately cast to `0`. That is an
+interpretive call: `NULL >= 3` evaluates to unknown in SQL rather than false, and REO is
+a terminal status, not active 90+ arrears.
 
-Summary Findings queries validating row counts, arrears distribution, and referential integrity against the live warehouse are in
+`fct_performance` also carries `snapshot_month_end` and `date_key`, aligned to **month
+end**, not the 1st. A date column can mean "when" or "which period":
+`monthly_reporting_period` is a label for a month that happens to be stored as the 1st,
+while `snapshot_month_end` is the instant the row describes. Month-end alignment is both
+what `LASTDATE` needs and what the source data actually means.
+
+### Gold - dim_date
+
+`dim_date` is a conformed date dimension, **generated rather than sourced**, so it
+contains no `ref()` or `source()`. 2,922 daily rows covering 2018-01-01 to 2025-12-31,
+whole calendar years, 96 month-ends.
+
+The date spine is produced by cross-joining a ten-row digits CTE four times with
+place-value weighting, producing integers 0 to 9999 from nothing, then `DATEADD` onto an
+anchor date. Recursive CTEs would be the obvious approach, but Fabric's support for them
+is patchy, and the project had already been bitten twice by Fabric strictness.
+
+**A referential integrity test proves a key is valid, not that it is correct.** Both
+`20180101` and `20180131` exist in `dim_date`, so the fact-to-date relationship test
+passes either way. Only eyeballing the join catches the wrong one, which is why query B3
+exists in `summary_findings.sql`.
+
+Summary Findings queries validating row counts, arrears distribution, referential integrity, seasoning, vintage, forbearance, and the outcome fairness results are in
 [`docs/sql/summary_findings.sql`](docs/sql/summary_findings.sql).
+
+## Fabric compatibility notes
+
+Everything below was hit for real during the build and cost time to diagnose.
+
+- **`dbt_utils.expression_is_true` fails on Fabric with error 8155.** The unaliased `select 1` it generates breaks Fabric's stricter engine. Replaced with a singular test using aliased columns.
+- **`datename()` returns `nvarchar(30)`, which Fabric Warehouse cannot persist as a column type.** Cast to `varchar`. Note the failure happens at table creation, not query time: Fabric will evaluate expressions it will not let you store.
+- **`information_schema.columns` unqualified gives "Invalid object name" in the Fabric SQL editor.** Use `sys.columns` joined to `sys.types` instead.
+- **Positional `GROUP BY` is not supported** ("Each GROUP BY expression must contain at least one column that is not an outer reference"), though positional `ORDER BY` is. Wrap the expression in a CTE and group by the alias.
+- **Azure auth expiry surfaces as connection errors** (TCP timeout, login timeout, server not found), not data errors. A real test failure reports a row count of failing records. If the driver is talking, dbt never reached the test logic.
+- **Axis min and max in Power BI are set against the stored value, not the display.** A percentage-formatted measure holding 0.08 needs a max of 0.08, not 8.
+- **Direct Lake propagates data automatically but not structure.** Every dbt schema change needs a manual Edit tables refresh in the semantic model, and re-adding a table can drop its relationship.
 
 ### Reproducing the dbt setup
 The dbt connection profile isn't committed, as it points at a specific Fabric Warehouse endpoint. To run this yourself: copy `mortgage_dbt/profiles.example.yml` to `~/.dbt/profiles.yml`, set `server` to your own Warehouse SQL connection string, run `az login`, then `dbt debug` from the `mortgage_dbt/` folder.
